@@ -5,7 +5,8 @@ import mediapipe as mp
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
-from transformers import CLIPProcessor
+from transformers import CLIPProcessor, CLIPModel
+import torch
 
 mp_face_detection = mp.solutions.face_detection
 mp_face_mesh = mp.solutions.face_mesh
@@ -892,9 +893,9 @@ def _show_pose_visualization(
 if __name__ == "__main__":
 
     frames = extract_focused_frames(
-        r"D:\emotion-aware-interactions-pipeline\MELD.Raw\train_splits\dia0_utt0.mp4",
+        r"D:\emotion-aware-interactions-pipeline\data\MELD.Raw\train_splits\dia0_utt0.mp4",
         num_frames=3,
-        visualize=True,
+        visualize=False,
     )
 
     processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
@@ -909,3 +910,46 @@ if __name__ == "__main__":
         f"pixel_values shape: "
         f"{clip_inputs['pixel_values'].shape}"
     )
+
+    clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+    clip_model.eval()
+    with torch.no_grad():
+        outputs = clip_model.vision_model(pixel_values=clip_inputs["pixel_values"])
+        # image_embeddings = clip_model.visual_projection(outputs.pooler_output)
+        patch_embeddings = outputs.last_hidden_state
+        patch_embeddings = outputs.last_hidden_state[:, 1:, :]  # removing CLS
+
+        print("Patch embedding shape:", patch_embeddings.shape)
+
+        B, N, D = patch_embeddings.shape
+
+        patch_grid = patch_embeddings.reshape(
+            B,
+            7,
+            7,
+            D,
+        )
+
+        # 4 spatial regions
+        top_left = patch_grid[:, :3, :3, :]
+        top_right = patch_grid[:, :3, 3:, :]
+        bottom_left = patch_grid[:, 3:, :3, :]
+        bottom_right = patch_grid[:, 3:, 3:, :]
+
+        # Spatial average pooling
+        token_1 = top_left.mean(dim=(1, 2))
+        token_2 = top_right.mean(dim=(1, 2))
+        token_3 = bottom_left.mean(dim=(1, 2))
+        token_4 = bottom_right.mean(dim=(1, 2))
+
+        visual_tokens = torch.stack(
+            [
+                token_1,
+                token_2,
+                token_3,
+                token_4,
+            ],
+            dim=1,
+        )
+
+        print("Image Tokened: ", visual_tokens.shape)
