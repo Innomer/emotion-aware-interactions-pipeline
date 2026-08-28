@@ -8,7 +8,7 @@ class EmotionHead(nn.Module):
         self.classifier = nn.Linear(hidden_dim, num_classes)
 
     def forward(self, emo_hidden_state):
-        return self.classifier(emo_hidden_state)
+        return self.classifier(emo_hidden_state.to(self.classifier.weight.dtype))
 
 
 emotion_head = EmotionHead()

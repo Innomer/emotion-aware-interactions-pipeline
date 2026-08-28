@@ -15,6 +15,9 @@ mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 
+processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+clip_model.eval()
 
 def extract_focused_frames(
     video_path: str,
@@ -902,8 +905,6 @@ def process_video(
         visualize=visualize,
     )
 
-    processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-
     clip_inputs = processor(
         images=frames,
         return_tensors="pt",
@@ -915,8 +916,6 @@ def process_video(
         f"{clip_inputs['pixel_values'].shape}"
     )
 
-    clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-    clip_model.eval()
     try:
         with torch.no_grad():
             outputs = clip_model.vision_model(pixel_values=clip_inputs["pixel_values"])
