@@ -11,12 +11,30 @@ import torch
 mp_face_detection = mp.solutions.face_detection
 mp_face_mesh = mp.solutions.face_mesh
 mp_pose = mp.solutions.pose
+face_detector = mp_face_detection.FaceDetection(
+        model_selection=1,
+        min_detection_confidence=0.1,
+    )
 
+face_mesh = mp_face_mesh.FaceMesh(
+        static_image_mode=True,
+        max_num_faces=1,
+        refine_landmarks=True,
+        min_detection_confidence=0.1,
+        min_tracking_confidence=0.1,
+    )
+pose_detector = mp_pose.Pose(
+        static_image_mode=True,
+        model_complexity=0,
+        min_detection_confidence=0.5,
+    )
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+clip_model.to(device)
 clip_model.eval()
 
 def extract_focused_frames(
@@ -81,12 +99,6 @@ def extract_focused_frames(
             .astype(int)
             .tolist()
         )
-
-    pose_detector = mp_pose.Pose(
-        static_image_mode=True,
-        model_complexity=0,
-        min_detection_confidence=0.5,
-    )
 
     frames = []
     pose_visualizations = []
@@ -232,7 +244,7 @@ def extract_focused_frames(
         frames.append(Image.fromarray(final_crop))
 
     cap.release()
-    pose_detector.close()
+    # pose_detector.close()
 
     if visualize:
 
@@ -244,6 +256,9 @@ def extract_focused_frames(
 
         raise ValueError(f"Could not extract frames from: {video_path}")
 
+    while len(frames)<num_frames:
+        frames.append(frames[-1])
+
     return frames
 
 
@@ -254,19 +269,6 @@ def _find_speaker(
 
     if not frames:
         return None, []
-
-    face_detector = mp_face_detection.FaceDetection(
-        model_selection=1,
-        min_detection_confidence=0.1,
-    )
-
-    face_mesh = mp_face_mesh.FaceMesh(
-        static_image_mode=True,
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.1,
-        min_tracking_confidence=0.1,
-    )
 
     tracks: Dict[int, Dict] = {}
 
@@ -508,8 +510,8 @@ def _find_speaker(
                 )
             )
 
-    face_detector.close()
-    face_mesh.close()
+    # face_detector.close()
+    # face_mesh.close()
 
     valid_tracks = {
         track_id: track
@@ -894,7 +896,7 @@ def _show_pose_visualization(
 
 
 def process_video(
-    video_path=r"D:\emotion-aware-interactions-pipeline\data\MELD.Raw\train_splits\dia0_utt0.mp4",
+    video_path="data/MELD.Raw/train_splits/dia0_utt0.mp4",
     visualize=False,
     clip_frames=3,
 ):
@@ -916,48 +918,30 @@ def process_video(
         f"{clip_inputs['pixel_values'].shape}"
     )
 
-    try:
-        with torch.no_grad():
-            outputs = clip_model.vision_model(pixel_values=clip_inputs["pixel_values"])
-            # image_embeddings = clip_model.visual_projection(outputs.pooler_output)
-            patch_embeddings = outputs.last_hidden_state
-            patch_embeddings = outputs.last_hidden_state[:, 1:, :]  # removing CLS
+    pixel_values = clip_inputs["pixel_values"].to(device)
 
-            print("Patch embedding shape:", patch_embeddings.shape)
+    with torch.no_grad():
+        outputs = clip_model.vision_model(pixel_values=pixel_values)
+        patch_embeddings = outputs.last_hidden_state
+        patch_embeddings = outputs.last_hidden_state[:, 1:, :]  # removing CLS
 
-            B, N, D = patch_embeddings.shape
+        print("Patch embedding shape:", patch_embeddings.shape)
 
-            patch_grid = patch_embeddings.reshape(
-                B,
-                7,
-                7,
-                D,
-            )
+        B, N, D = patch_embeddings.shape
 
-            # 4 spatial regions
-            top_left = patch_grid[:, :3, :3, :]
-            top_right = patch_grid[:, :3, 3:, :]
-            bottom_left = patch_grid[:, 3:, :3, :]
-            bottom_right = patch_grid[:, 3:, 3:, :]
+        patch_grid = patch_embeddings.reshape(B, 7, 7, D)
 
-            # Spatial average pooling
-            token_1 = top_left.mean(dim=(1, 2))
-            token_2 = top_right.mean(dim=(1, 2))
-            token_3 = bottom_left.mean(dim=(1, 2))
-            token_4 = bottom_right.mean(dim=(1, 2))
+        top_left = patch_grid[:, :3, :3, :]
+        top_right = patch_grid[:, :3, 3:, :]
+        bottom_left = patch_grid[:, 3:, :3, :]
+        bottom_right = patch_grid[:, 3:, 3:, :]
 
-            visual_tokens = torch.stack(
-                [
-                    token_1,
-                    token_2,
-                    token_3,
-                    token_4,
-                ],
-                dim=1,
-            )
+        token_1 = top_left.mean(dim=(1, 2))
+        token_2 = top_right.mean(dim=(1, 2))
+        token_3 = bottom_left.mean(dim=(1, 2))
+        token_4 = bottom_right.mean(dim=(1, 2))
 
-            print("Image Tokened: ", visual_tokens.shape)
-            return visual_tokens
-    except Exception as e:
-        print("Error in CLIP: ", e)
-        return None
+        visual_tokens = torch.stack([token_1, token_2, token_3, token_4], dim=1)
+
+        print("Image Tokened: ", visual_tokens.shape)
+        return visual_tokens

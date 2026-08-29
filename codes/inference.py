@@ -2,16 +2,19 @@ import torch
 from single_video_processing import process_video
 from clip_to_LLM_embedding import VisualProjector
 from model_heads import model, tokenizer, emotion_head, forward_pass
-from sequence_builder import build_input_embeds
+from sequence_builder import build_input_embeds, emo_token
 from checkpoint_utils import load_checkpoint
 
 EMOTION_LABELS = ["neutral", "joy", "sadness", "anger", "surprise", "fear", "disgust"]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
 projector = VisualProjector().to(device).to(model.dtype)
+emotion_head.to(device).to(model.dtype)
+emo_token.to(device).to(model.dtype)
 
-CHECKPOINT_PATH = r"D:\emotion-aware-interactions-pipeline\checkpoints\epoch_2"
-load_checkpoint(CHECKPOINT_PATH, projector, emotion_head, device)
+CHECKPOINT_PATH = "checkpoints/epoch_1"
+load_checkpoint(CHECKPOINT_PATH, projector, emotion_head, emo_token, device)
 
 
 def run_inference(video_path, text, max_new_tokens=40):
@@ -39,8 +42,8 @@ def run_inference(video_path, text, max_new_tokens=40):
 
 if __name__ == "__main__":
     label, response = run_inference(
-        video_path=r"D:\emotion-aware-interactions-pipeline\data\MELD.Raw\dev_splits_complete\dia0_utt0.mp4",
-        text="Ross: Sure, whatever you say.",
+        video_path="data/MELD.Raw/dev_splits_complete/dia0_utt0.mp4",
+        text="Phoebe: Oh my God, hes lost it. Hes totally lost it.",
     )
     print("predicted emotion:", label)
     print("generated response:", response)

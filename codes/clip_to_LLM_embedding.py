@@ -1,5 +1,4 @@
 # from single_video_processing import process_video
-import torch
 import torch.nn as nn
 
 class VisualProjector(nn.Module):
@@ -10,9 +9,9 @@ class VisualProjector(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, llm_hidden_dim)
         )
-    
-    def forward(self,x):
-        return self.mlp(x)
+
+    def forward(self, x):
+        return self.mlp(x.to(self.mlp[0].weight.dtype))
     
 # device=torch.device("cpu")
 # projector = VisualProjector(

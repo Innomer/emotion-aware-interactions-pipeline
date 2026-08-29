@@ -1,15 +1,13 @@
 import torch
+import torch.nn as nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig, get_peft_model
 
 MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
+HIDDEN_DIM = 1536
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-
-tokenizer.add_special_tokens({"additional_special_tokens": ["<EMO>"]})
-model.resize_token_embeddings(len(tokenizer))
-emo_token_id = tokenizer.convert_tokens_to_ids("<EMO>")
 
 if tokenizer.pad_token_id is None:
     tokenizer.pad_token = tokenizer.eos_token
@@ -18,18 +16,40 @@ lora_config = LoraConfig(
     r=8,
     lora_alpha=16,
     target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-    modules_to_save=["embed_tokens"],
     lora_dropout=0.05,
     task_type="CAUSAL_LM",
 )
 model = get_peft_model(model, lora_config)
 
 
+class EmoToken(nn.Module):
+    def __init__(self, hidden_dim=HIDDEN_DIM):
+        super().__init__()
+        self.embedding = nn.Parameter(torch.randn(1, hidden_dim) * 0.02)
+
+    def forward(self):
+        return self.embedding
+
+
+emo_token = EmoToken()
+
+
 def build_sequence(text, visual_tokens, device):
-    input_ids = tokenizer(text, return_tensors="pt").input_ids.to(device)
+    prompt = tokenizer.apply_chat_template(
+        [
+            {
+                "role": "system",
+                "content": "You are a Engligsh speaking robot companion. Based on the conversation and the speaker's visible emotional state, reply briefly and appropriately in one short sentence in english.",
+            },
+            {"role": "user", "content": text},
+        ],
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+    input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(device)
     text_embeds = model.get_input_embeddings()(input_ids).squeeze(0)
 
-    emo_embed = model.get_input_embeddings()(torch.tensor([emo_token_id], device=device))
+    emo_embed = emo_token().to(text_embeds.dtype)
     visual_tokens = visual_tokens.to(device).reshape(-1, visual_tokens.shape[-1]).to(text_embeds.dtype)
 
     return torch.cat([visual_tokens, text_embeds, emo_embed], dim=0)

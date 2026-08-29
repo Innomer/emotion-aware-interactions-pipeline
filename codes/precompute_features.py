@@ -13,13 +13,13 @@ def precompute(csv_path, video_dir, cache_dir):
     failed = 0
 
     for _, row in tqdm(df.iterrows(), total=len(df), desc="precomputing features"):
-        cache_path = f"{cache_dir}\\dia{row['Dialogue_ID']}_utt{row['Utterance_ID']}.pt"
+        cache_path = f"{cache_dir}/dia{row['Dialogue_ID']}_utt{row['Utterance_ID']}.pt"
         if os.path.exists(cache_path):
             skipped += 1
             continue
 
         video_path = (
-            f"{video_dir}\\dia{row['Dialogue_ID']}_utt{row['Utterance_ID']}.mp4"
+            f"{video_dir}/dia{row['Dialogue_ID']}_utt{row['Utterance_ID']}.mp4"
         )
         try:
             features = process_video(video_path)
@@ -37,9 +37,9 @@ def precompute(csv_path, video_dir, cache_dir):
 
 
 if __name__ == "__main__":
-    base_path = r"D:\emotion-aware-interactions-pipeline\data\MELD.Raw"
+    base_path = "data/MELD.Raw"
     precompute(
-        csv_path=base_path + r"\train_sent_emo.csv",
-        video_dir=base_path + r"\train_splits",
-        cache_dir=base_path + r"\train_cache",
+        csv_path=base_path + "/train_sent_emo.csv",
+        video_dir=base_path + "/train_splits",
+        cache_dir=base_path + "/train_cache",
     )

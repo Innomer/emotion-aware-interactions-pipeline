@@ -1,5 +1,5 @@
 import torch.nn as nn
-from sequence_builder import model, tokenizer, emo_token_id, build_input_embeds
+from sequence_builder import model, tokenizer, emo_token, build_input_embeds
 
 
 class EmotionHead(nn.Module):

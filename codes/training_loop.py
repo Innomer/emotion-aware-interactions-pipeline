@@ -10,7 +10,7 @@ from tqdm import tqdm
 from dataset_builder import MELDDataset, collate_fn
 from clip_to_LLM_embedding import VisualProjector
 from model_heads import model, tokenizer, emotion_head
-from sequence_builder import build_batch_input_embeds
+from sequence_builder import build_batch_input_embeds, emo_token
 from checkpoint_utils import save_checkpoint
 
 logging.basicConfig(
@@ -18,7 +18,7 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(r"D:\emotion-aware-interactions-pipeline\training.log"),
+        logging.FileHandler("training.log"),
     ],
 )
 
@@ -26,17 +26,19 @@ logger = logging.getLogger(__name__)
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Device: ", device)
+print("-"*50)
 
 logger.info(f"Using device: {device}")
 
-base_path = r"D:\emotion-aware-interactions-pipeline\data\MELD.Raw"
-train_csv = pd.read_csv(base_path + r"\train_sent_emo.csv", header=0)
+base_path = "data/MELD.Raw"
+train_csv = pd.read_csv(base_path + "/train_sent_emo.csv", header=0)
 
 logger.info(f"Loaded training CSV with {len(train_csv)} samples")
 
-dataset = MELDDataset(csv_df=train_csv, cache_dir=base_path + r"\train_cache")
+dataset = MELDDataset(csv_df=train_csv, cache_dir=base_path + "/train_cache")
 loader = DataLoader(
-    dataset, batch_size=4, shuffle=True, collate_fn=collate_fn, num_workers=4
+    dataset, batch_size=4, shuffle=True, collate_fn=collate_fn, num_workers=0
 )
 
 logger.info(f"Dataset size: {len(dataset)}")
@@ -45,10 +47,12 @@ logger.info(f"Number of batches per epoch: {len(loader)}")
 projector = VisualProjector().to(device).to(model.dtype)
 model.to(device)
 emotion_head.to(device).to(model.dtype)
+emo_token.to(device).to(model.dtype)
 
 trainable_params = (
     list(projector.parameters())
     + list(emotion_head.parameters())
+    + list(emo_token.parameters())
     + [p for p in model.parameters() if p.requires_grad]
 )
 optimizer = torch.optim.AdamW(trainable_params, lr=1e-4)
@@ -60,7 +64,7 @@ logger.info(
     f"{sum(p.numel() for p in trainable_params if p.requires_grad):,}"
 )
 
-CHECKPOINT_DIR = r"D:\emotion-aware-interactions-pipeline\checkpoints"
+CHECKPOINT_DIR = "checkpoints"
 
 training_start = time.time()
 
@@ -140,9 +144,9 @@ for epoch in range(3):
         f"ETA: {eta / 60:.2f} min"
     )
 
-    save_checkpoint(f"{CHECKPOINT_DIR}\\epoch_{epoch}", projector, emotion_head)
+    save_checkpoint(f"{CHECKPOINT_DIR}/epoch_{epoch}", projector, emotion_head, emo_token)
 
-    logger.info(f"Checkpoint saved: {CHECKPOINT_DIR}\\epoch_{epoch}")
+    logger.info(f"Checkpoint saved: {CHECKPOINT_DIR}/epoch_{epoch}")
 
 total_time = time.time() - training_start
 

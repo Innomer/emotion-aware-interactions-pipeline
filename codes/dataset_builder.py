@@ -19,7 +19,7 @@ class MELDDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        cache_path = f'{self.cache_dir}\\dia{row["Dialogue_ID"]}_utt{row["Utterance_ID"]}.pt'
+        cache_path = f'{self.cache_dir}/dia{row["Dialogue_ID"]}_utt{row["Utterance_ID"]}.pt'
         if not os.path.exists(cache_path):
             return None
 
