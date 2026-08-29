@@ -12,3 +12,8 @@ Solution: Flattened vision tokens as well in a similar fashion to text tokens3.
 
 3. Faced Issues with BFloat16 and Float mismatch between emo head output, and vision tokens being in float but the LLM being in BFloat16
 Solution: Custom Casting
+
+4. Had to remove one clip Diag 125 utt 3 due to file corruption
+
+5. Training took too long due to CLIP features being computed during training loop. 
+Solution: precomputed for the whole dataset

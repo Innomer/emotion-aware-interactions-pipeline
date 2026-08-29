@@ -34,9 +34,9 @@ train_csv = pd.read_csv(base_path + r"\train_sent_emo.csv", header=0)
 
 logger.info(f"Loaded training CSV with {len(train_csv)} samples")
 
-dataset = MELDDataset(csv_df=train_csv, video_dir=base_path + r"\train_splits")
+dataset = MELDDataset(csv_df=train_csv, cache_dir=base_path + r"\train_cache")
 loader = DataLoader(
-    dataset, batch_size=4, shuffle=True, collate_fn=collate_fn, num_workers=0
+    dataset, batch_size=4, shuffle=True, collate_fn=collate_fn, num_workers=4
 )
 
 logger.info(f"Dataset size: {len(dataset)}")
