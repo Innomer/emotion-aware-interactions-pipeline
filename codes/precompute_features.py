@@ -38,8 +38,34 @@ def precompute(csv_path, video_dir, cache_dir):
 
 if __name__ == "__main__":
     base_path = "data/MELD.Raw"
+    split = os.getenv("MELD_SPLIT", "train")
+    split_paths = {
+        "train": (
+            "train_sent_emo.csv",
+            "train_splits",
+            "train_cache",
+        ),
+        "dev": (
+            "dev_sent_emo.csv",
+            "dev_splits_complete",
+            "dev_cache",
+        ),
+        "test": (
+            "test_sent_emo.csv",
+            "output_repeated_splits_test",
+            "test_cache",
+        ),
+    }
+
+    if split not in split_paths:
+        raise ValueError(
+            f"Unknown MELD_SPLIT={split!r}. "
+            f"Choose one of: {', '.join(split_paths)}"
+        )
+
+    csv_name, video_dir_name, cache_dir_name = split_paths[split]
     precompute(
-        csv_path=base_path + "/train_sent_emo.csv",
-        video_dir=base_path + "/train_splits",
-        cache_dir=base_path + "/train_cache",
+        csv_path=base_path + "/" + csv_name,
+        video_dir=base_path + "/" + video_dir_name,
+        cache_dir=base_path + "/" + cache_dir_name,
     )

@@ -17,7 +17,7 @@ CHECKPOINT_PATH = "checkpoints/epoch_2"
 load_checkpoint(CHECKPOINT_PATH, projector, emotion_head, emo_token, device)
 
 
-def run_inference(video_path, text, max_new_tokens=40):
+def run_inference(video_path, text, max_new_tokens=10):
     model.eval()
 
     visual_features = process_video(video_path).to(device)
@@ -31,7 +31,7 @@ def run_inference(video_path, text, max_new_tokens=40):
         inputs_embeds=inputs_embeds,
         attention_mask=attention_mask,
         max_new_tokens=max_new_tokens,
-        do_sample=False,
+        do_sample=True,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
