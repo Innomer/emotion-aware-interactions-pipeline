@@ -13,7 +13,7 @@ projector = VisualProjector().to(device).to(model.dtype)
 emotion_head.to(device).to(model.dtype)
 emo_token.to(device).to(model.dtype)
 
-CHECKPOINT_PATH = "checkpoints/epoch_1"
+CHECKPOINT_PATH = "checkpoints/epoch_2"
 load_checkpoint(CHECKPOINT_PATH, projector, emotion_head, emo_token, device)
 
 
@@ -26,16 +26,20 @@ def run_inference(video_path, text, max_new_tokens=40):
     emotion_logits, _ = forward_pass(text, visual_tokens, device)
     predicted_label = EMOTION_LABELS[emotion_logits.argmax(dim=-1).item()]
 
-    inputs_embeds, attention_mask = build_input_embeds(text, visual_tokens, device)
+    inputs_embeds, attention_mask, _ = build_input_embeds(text, visual_tokens, device)
     generated_ids = model.generate(
         inputs_embeds=inputs_embeds,
         attention_mask=attention_mask,
         max_new_tokens=max_new_tokens,
-        do_sample=True,
-        top_p=0.9,
-        temperature=0.8,
+        do_sample=False,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
     )
-    response = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
+
+    response = tokenizer.decode(
+        generated_ids[0],
+        skip_special_tokens=True,
+    ).strip()
 
     return predicted_label, response
 
