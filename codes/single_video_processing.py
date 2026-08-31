@@ -895,28 +895,18 @@ def _show_pose_visualization(
     plt.show()
 
 
-def process_video(
-    video_path="data/MELD.Raw/train_splits/dia0_utt0.mp4",
-    visualize=False,
-    clip_frames=3,
-):
-
-    frames = extract_focused_frames(
-        video_path,
-        num_frames=clip_frames,
-        visualize=visualize,
-    )
-
+def encode_clip_frames(frames, log_shapes=False):
     clip_inputs = processor(
         images=frames,
         return_tensors="pt",
     )
 
-    print(
-        f"Extracted {len(frames)} frames, "
-        f"pixel_values shape: "
-        f"{clip_inputs['pixel_values'].shape}"
-    )
+    if log_shapes:
+        print(
+            f"Extracted {len(frames)} frames, "
+            f"pixel_values shape: "
+            f"{clip_inputs['pixel_values'].shape}"
+        )
 
     pixel_values = clip_inputs["pixel_values"].to(device)
 
@@ -925,7 +915,8 @@ def process_video(
         patch_embeddings = outputs.last_hidden_state
         patch_embeddings = outputs.last_hidden_state[:, 1:, :]  # removing CLS
 
-        print("Patch embedding shape:", patch_embeddings.shape)
+        if log_shapes:
+            print("Patch embedding shape:", patch_embeddings.shape)
 
         B, N, D = patch_embeddings.shape
 
@@ -943,5 +934,135 @@ def process_video(
 
         visual_tokens = torch.stack([token_1, token_2, token_3, token_4], dim=1)
 
-        print("Image Tokened: ", visual_tokens.shape)
+        if log_shapes:
+            print("Image Tokened: ", visual_tokens.shape)
+
         return visual_tokens
+
+
+def process_frame_sequence(
+    frame_bgr_list,
+    clip_frames=3,
+    padding_ratio=0.15,
+    focus=True,
+    return_debug=False,
+):
+    if not frame_bgr_list:
+        raise ValueError("No camera frames available for visual inference")
+
+    total_frames = len(frame_bgr_list)
+    frame_indices = (
+        np.linspace(
+            0,
+            total_frames - 1,
+            min(clip_frames, total_frames),
+        )
+        .astype(int)
+        .tolist()
+    )
+
+    speaker_track = None
+
+    if focus:
+        speaker_indices = (
+            np.linspace(
+                0,
+                total_frames - 1,
+                min(24, total_frames),
+            )
+            .astype(int)
+            .tolist()
+        )
+        speaker_frames = [
+            (
+                frame_idx,
+                frame_bgr_list[frame_idx],
+            )
+            for frame_idx in speaker_indices
+        ]
+        speaker_track, _ = _find_speaker(
+            speaker_frames,
+            visualize=False,
+        )
+
+    frames = []
+    debug_crops = []
+
+    for frame_idx in frame_indices:
+        frame_rgb = cv2.cvtColor(
+            frame_bgr_list[frame_idx],
+            cv2.COLOR_BGR2RGB,
+        )
+
+        face_box = None
+
+        if speaker_track is not None:
+            face_box = _get_speaker_box(
+                speaker_track,
+                frame_idx,
+            )
+
+        if face_box is None:
+            final_crop = frame_rgb
+        else:
+            person_region_box = _expand_face_box(
+                face_box,
+                frame_rgb.shape,
+            )
+
+            pose_box, _ = _detect_person(
+                frame_rgb,
+                pose_detector,
+                face_box,
+            )
+
+            if pose_box is not None:
+                final_box = _merge_boxes(
+                    person_region_box,
+                    pose_box,
+                )
+                final_box = _add_padding(
+                    final_box,
+                    frame_rgb.shape,
+                    padding_ratio,
+                )
+            else:
+                final_box = _add_padding(
+                    person_region_box,
+                    frame_rgb.shape,
+                    padding_ratio,
+                )
+
+            final_crop = _crop_box(
+                frame_rgb,
+                final_box,
+            )
+
+        frames.append(Image.fromarray(final_crop))
+        debug_crops.append(final_crop.copy())
+
+    while len(frames) < clip_frames:
+        frames.append(frames[-1])
+        debug_crops.append(debug_crops[-1].copy())
+
+    visual_tokens = encode_clip_frames(frames)
+
+    if return_debug:
+        return visual_tokens, debug_crops
+
+    return visual_tokens
+
+
+def process_video(
+    video_path="data/MELD.Raw/train_splits/dia0_utt0.mp4",
+    visualize=False,
+    clip_frames=3,
+):
+
+    frames = extract_focused_frames(
+        video_path,
+        num_frames=clip_frames,
+        visualize=visualize,
+    )
+
+    return encode_clip_frames(frames, log_shapes=True)
