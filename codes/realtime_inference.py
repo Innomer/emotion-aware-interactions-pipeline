@@ -26,6 +26,8 @@ HUD_STATE = {
     "user_text": "",
     "emotion": "",
     "response": "",
+    "frame_info": "",
+    "selected_frames": [],
     "clip_crops": [],
 }
 
@@ -76,22 +78,50 @@ class CameraBuffer:
                     self.frames.popleft()
 
     def get_frames(self, start_time, end_time, fallback_seconds=3.0):
+        frames, _ = self.get_frame_window(
+            start_time,
+            end_time,
+            fallback_seconds=fallback_seconds,
+        )
+
+        return frames
+
+    def get_frame_window(self, start_time, end_time, fallback_seconds=3.0):
         with self.lock:
-            frames = [
-                frame
+            selected = [
+                (timestamp, frame.copy())
                 for timestamp, frame in self.frames
                 if start_time <= timestamp <= end_time
             ]
+            used_fallback = False
 
-            if not frames:
+            if not selected:
                 fallback_start = end_time - fallback_seconds
-                frames = [
-                    frame
+                selected = [
+                    (timestamp, frame.copy())
                     for timestamp, frame in self.frames
                     if fallback_start <= timestamp <= end_time
                 ]
+                used_fallback = True
 
-        return frames
+        frames = [frame for _, frame in selected]
+        now = time.time()
+
+        if selected:
+            oldest_timestamp = selected[0][0]
+            newest_timestamp = selected[-1][0]
+            info = (
+                f"frames={len(selected)} "
+                f"span={newest_timestamp - oldest_timestamp:.2f}s "
+                f"newest_age={now - newest_timestamp:.2f}s"
+            )
+        else:
+            info = "frames=0"
+
+        if used_fallback:
+            info += " fallback"
+
+        return frames, info
 
     def get_latest_frame(self):
         with self.lock:
@@ -123,12 +153,6 @@ class VisualHud:
 
         if self.thread is not None:
             self.thread.join(timeout=2.0)
-
-        if self.enabled:
-            try:
-                cv2.destroyWindow("Realtime Emotion Robot")
-            except cv2.error:
-                pass
 
     def update(self, **kwargs):
         with self.lock:
@@ -549,10 +573,16 @@ class SpeechTranscriber:
                 with sr.AudioFile(wav_path) as source:
                     audio_data = transcriber.record(source)
 
-                return transcriber.recognize_google(
-                    audio_data,
-                    language=self.language,
-                ).strip()
+                try:
+                    return transcriber.recognize_google(
+                        audio_data,
+                        language=self.language,
+                    ).strip()
+                except sr.UnknownValueError:
+                    return ""
+                except sr.RequestError as exc:
+                    print(f"Speech recognition request failed: {exc}")
+                    return ""
 
             raise RuntimeError(f"Unsupported ASR backend: {backend}")
         finally:
@@ -719,7 +749,7 @@ def parse_args():
     parser.add_argument("--context-window", type=int, default=3)
     parser.add_argument("--clip-frames", type=int, default=3)
     parser.add_argument("--visual-window-seconds", type=float, default=4.0)
-    parser.add_argument("--max-new-tokens", type=int, default=10)
+    parser.add_argument("--max-new-tokens", type=int, default=24)
     parser.add_argument("--repetition-penalty", type=float, default=1.25)
     parser.add_argument("--no-repeat-ngram-size", type=int, default=3)
     parser.add_argument("--threshold", type=float, default=None)
@@ -790,7 +820,13 @@ def main():
             hud.update(status="listening")
             audio, utterance_start, utterance_end = recorder.listen_once()
             hud.update(status="transcribing")
-            user_text = transcriber.transcribe(audio, args.sample_rate)
+
+            try:
+                user_text = transcriber.transcribe(audio, args.sample_rate)
+            except Exception as exc:
+                print(f"Speech recognition failed: {exc}")
+                hud.update(status="speech recognition failed")
+                continue
 
             if not user_text:
                 print("No speech recognized.")
